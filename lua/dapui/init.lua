@@ -49,8 +49,8 @@ end
 
 function M.eval(expr)
   if open_float then
-    open_float:jump_to()
-    return
+    open_float:close(true)
+    open_float = nil
   end
   if not expr then
     if vim.fn.mode() == "v" then

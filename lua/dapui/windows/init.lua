@@ -84,8 +84,8 @@ end
 
 function M.open_float(element, position, settings)
   if float_windows[element.name] then
-    float_windows[element.name]:jump_to()
-    return float_windows[element.name]
+    -- float_windows[element.name]:jump_to()
+    -- return float_windows[element.name]
   end
   local float_win = require("dapui.windows.float").open_float({
     height = settings.height or 1,
