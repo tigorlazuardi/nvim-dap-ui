@@ -141,6 +141,7 @@ function WindowLayout:_init_win_settings(win)
     number = false,
     winfixwidth = true,
     winfixheight = true,
+    wrap = true,
   }
   for key, val in pairs(win_settings) do
     api.nvim_win_set_option(win, key, val)
