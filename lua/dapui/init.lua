@@ -1,6 +1,5 @@
-local M = {}
-
-local listener_id = "dapui"
+---@tag nvim-dap-ui
+local dapui = {}
 
 local windows = require("dapui.windows")
 local config = require("dapui.config")
@@ -13,41 +12,71 @@ end
 
 local open_float = nil
 
-local function query_elem_name()
-  if open_float then
-    return open_float
-  end
-  local entries = { "Select an element:" }
+local function query_elem_name(on_select)
+  local entries = {}
   local elems = {}
   for _, name in pairs(config.elements) do
     if name ~= config.elements.HOVER then
-      entries[#entries + 1] = tostring(#entries) .. ": " .. name
+      entries[#entries + 1] = name
       elems[#elems + 1] = name
     end
   end
-  return elems[vim.fn.inputlist(entries)]
+  vim.ui.select(entries, {
+    prompt = "Select an element:",
+    format_item = function(entry)
+      return entry:sub(1, 1):upper() .. entry:sub(2)
+    end,
+  }, on_select)
 end
 
-function M.float_element(elem_name, user_settings)
+---Open a floating window containing the desired element.
+---
+---If no fixed dimensions are given, the window will expand to fit the contents
+---of the buffer.
+---@param elem_name string
+---@param settings table
+---@field width integer: Fixed width of window
+---@field height integer: Fixed height of window
+---@field enter boolean: Whether or not to enter the window after opening
+function dapui.float_element(elem_name, settings)
   vim.schedule(function()
+    if open_float then
+      return open_float:jump_to()
+    end
     local line_no = vim.fn.screenrow()
     local col_no = vim.fn.screencol()
     local position = { line = line_no, col = col_no }
-    elem_name = elem_name or query_elem_name()
-    if not elem_name then
+    local with_elem = vim.schedule_wrap(function(elem_name)
+      if not elem_name then
+        return
+      end
+      local elem = element(elem_name)
+      local settings = vim.tbl_deep_extend("keep", settings or {}, elem.float_defaults or {})
+      open_float = require("dapui.windows").open_float(elem, position, settings)
+      open_float:listen("close", function()
+        open_float = nil
+      end)
+    end)
+    if elem_name then
+      with_elem(elem_name)
       return
     end
-    open_float = elem_name
-    local elem = element(elem_name)
-    local settings = vim.tbl_deep_extend("keep", user_settings or {}, elem.float_defaults or {})
-    local win = require("dapui.windows").open_float(elem, position, settings)
-    win:listen("close", function()
-      open_float = nil
-    end)
+    query_elem_name(with_elem)
   end)
 end
 
-function M.eval(expr)
+---Open a floating window containing the result of evaluting an expression
+---
+---If no fixed dimensions are given, the window will expand to fit the contents
+---of the buffer.
+---@param expr string: Expression to evaluate. If nil, then in normal more the current word is used, and in visual mode the currently highlighted text.
+---@param settings table
+---@field context string: Context to use for evalutate request, defaults to "hover". Hover requests should have no side effects, if you have errors with evaluation, try changing context to "repl". See the DAP specification for more details.
+---@field width integer: Fixed width of window
+---@field height integer: Fixed height of window
+---@field enter boolean: Whether or not to enter the window after opening
+function dapui.eval(expr, settings)
+  settings = settings or {}
   if open_float then
     open_float:jump_to()
     return
@@ -63,19 +92,19 @@ function M.eval(expr)
     end
   end
   local elem = require("dapui.elements.hover")
-  elem.set_expression(expr)
+  elem.set_expression(expr, settings.context)
   vim.schedule(function()
     local line_no = vim.fn.screenrow()
     local col_no = vim.fn.screencol()
     local position = { line = line_no, col = col_no }
-    open_float = require("dapui.windows").open_float(elem, position, {})
+    open_float = require("dapui.windows").open_float(elem, position, settings)
     open_float:listen("close", function()
       open_float = nil
     end)
   end)
 end
 
-function M.setup(user_config)
+function dapui.setup(user_config)
   local dap = require("dap")
   local render = require("dapui.render")
 
@@ -101,9 +130,14 @@ function M.setup(user_config)
   ui_state:on_refresh(function()
     render.loop.run()
   end)
+  ui_state:on_clear(function()
+    render.loop.run()
+  end)
 end
 
-function M.close(component)
+---Close either or both the tray and sidebar
+---@param component string: "tray" or "sidebar"
+function dapui.close(component)
   windows.tray:update_sizes()
   windows.sidebar:update_sizes()
   if not component or component == "tray" then
@@ -116,7 +150,9 @@ function M.close(component)
   end
 end
 
-function M.open(component)
+---Open either or both the tray and sidebar
+---@param component string: "tray" or "sidebar"
+function dapui.open(component)
   windows.tray:update_sizes()
   windows.sidebar:update_sizes()
   local open_sidebar = false
@@ -136,7 +172,9 @@ function M.open(component)
   windows.tray:resize()
 end
 
-function M.toggle(component)
+---Toggle either or both the tray and sidebar
+---@param component string: "tray" or "sidebar"
+function dapui.toggle(component)
   windows.tray:update_sizes()
   windows.sidebar:update_sizes()
   local open_sidebar = false
@@ -156,4 +194,4 @@ function M.toggle(component)
   windows.tray:resize()
 end
 
-return M
+return dapui

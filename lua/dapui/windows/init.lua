@@ -8,9 +8,9 @@ local WindowLayout = require("dapui.windows.layout")
 
 local float_windows = {}
 
----@type WindowLayout
+---@type dapui.WindowLayout
 M.sidebar = nil
----@type WindowLayout
+---@type dapui.WindowLayout
 M.tray = nil
 
 local function register_elements(elements)
@@ -80,6 +80,17 @@ function M.setup()
   M.tray = area_layout(tray_config.size, tray_config.position, tray_config.elements)
   local sidebar_config = config.sidebar()
   M.sidebar = area_layout(sidebar_config.size, sidebar_config.position, sidebar_config.elements)
+  vim.cmd([[
+    augroup DapuiWindowsSetup
+      au!
+      au BufWinEnter,BufWinLeave * lua require('dapui.windows')._force_buffers()
+    augroup END
+  ]])
+end
+
+function M._force_buffers()
+  M.tray:force_buffers()
+  M.sidebar:force_buffers()
 end
 
 function M.open_float(element, position, settings)
@@ -95,19 +106,11 @@ function M.open_float(element, position, settings)
   local buf = float_win:get_buf()
   render.loop.register_buffer(element.name, buf)
   local listener_id = element.name .. buf .. "float"
-  render.loop.register_listener(
-    listener_id,
-    element.name,
-    "render",
-    function(rendered_buf, render_state)
-      if rendered_buf == buf then
-        float_win:resize(
-          settings.width or render_state:width(),
-          settings.height or render_state:length()
-        )
-      end
+  render.loop.register_listener(listener_id, element.name, "render", function(rendered_buf, canvas)
+    if rendered_buf == buf then
+      float_win:resize(settings.width or canvas:width(), settings.height or canvas:length())
     end
-  )
+  end)
   render.loop.register_listener(listener_id, element.name, "close", function(closed_buf)
     if closed_buf == buf then
       render.loop.unregister_listener(listener_id, element.name, "render")
@@ -121,11 +124,12 @@ function M.open_float(element, position, settings)
     "<Cmd>q<CR>",
     updated_buf
   )
-  vim.cmd(
-    "au WinEnter,CursorMoved * ++once lua require('dapui.windows').close_float('"
-      .. element.name
-      .. "')"
-  )
+  local close_cmd = "lua require('dapui.windows').close_float('" .. element.name .. "')"
+  vim.cmd("au WinEnter,CursorMoved * ++once " .. close_cmd)
+  vim.cmd("au WinClosed " .. float_win.win_id .. " ++once " .. close_cmd)
+  float_win:listen("close", function()
+    pcall(vim.api.nvim_buf_delete, buf, { force = true })
+  end)
   float_win:listen("close", element.on_close)
   float_windows[element.name] = float_win
   if settings.enter then
@@ -142,9 +146,9 @@ function M.close_float(element_name)
   local buf = win:get_buf()
   local closed = win:close(false)
   if not closed then
-    vim.cmd(
-      "au WinEnter * ++once lua require('dapui.windows').close_float('" .. element_name .. "')"
-    )
+    local close_cmd = "lua require('dapui.windows').close_float('" .. element_name .. "')"
+    vim.cmd("au WinEnter * ++once " .. close_cmd)
+    vim.cmd("au WinClosed " .. win.win_id .. " ++once " .. close_cmd)
   else
     render.loop.remove_buffer(element_name, buf)
     float_windows[element_name] = nil

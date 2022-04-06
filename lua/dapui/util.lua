@@ -20,17 +20,21 @@ function M.is_uri(path)
 end
 
 ---@param cb fun(session: table)
-function M.with_session(cb)
+function M.with_session(cb, fail_cb)
   local session = require("dap").session()
   if session then
     cb(session)
+  elseif fail_cb then
+    fail_cb()
   end
 end
 
-local function open_buf(bufnr, line, column)
+function M.open_buf(bufnr, line, column)
   for _, win in pairs(api.nvim_tabpage_list_wins(0)) do
     if api.nvim_win_get_buf(win) == bufnr then
-      api.nvim_win_set_cursor(win, { line, column - 1 })
+      if line then
+        api.nvim_win_set_cursor(win, { line, (column or 1) - 1 })
+      end
       api.nvim_set_current_win(win)
       return
     end
@@ -41,7 +45,9 @@ local function open_buf(bufnr, line, column)
     if api.nvim_buf_get_option(winbuf, "buftype") == "" then
       local bufchanged, _ = pcall(api.nvim_win_set_buf, win, bufnr)
       if bufchanged then
-        api.nvim_win_set_cursor(win, { line, column - 1 })
+        if line then
+          api.nvim_win_set_cursor(win, { line, (column or 1) - 1 })
+        end
         api.nvim_set_current_win(win)
         return
       end
@@ -72,7 +78,7 @@ function M.jump_to_frame(frame, session, set_frame)
         return
       end
       vim.api.nvim_buf_set_lines(buf, 0, 0, true, vim.split(response.body.content, "\n"))
-      open_buf(buf, line, column)
+      M.open_buf(buf, line, column)
       vim.api.nvim_buf_set_option(buf, "bufhidden", "delete")
       vim.api.nvim_buf_set_option(buf, "modifiable", false)
     end)
@@ -93,12 +99,17 @@ function M.jump_to_frame(frame, session, set_frame)
     M.is_uri(path) and path or vim.uri_from_fname(vim.fn.fnamemodify(path, ":p"))
   )
   vim.fn.bufload(bufnr)
-  open_buf(bufnr, line, column)
+  M.open_buf(bufnr, line, column)
 end
 
 function M.get_selection(start, finish)
   local start_line, start_col = start[2], start[3]
   local finish_line, finish_col = finish[2], finish[3]
+
+  if start_line > finish_line or (start_line == finish_line and start_col > finish_col) then
+    start_line, start_col, finish_line, finish_col = finish_line, finish_col, start_line, start_col
+  end
+
   local lines = vim.fn.getline(start_line, finish_line)
   if #lines == 0 then
     return

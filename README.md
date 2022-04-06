@@ -61,6 +61,7 @@ require("dapui").setup({
     remove = "d",
     edit = "e",
     repl = "r",
+    toggle = "t",
   },
   sidebar = {
     -- You can change the order of elements in the sidebar
@@ -119,6 +120,7 @@ Displays the running threads and their stack frames.
 Mappings:
 
 - `open`: Jump to a place within the stack frame.
+- `toggle`: Toggle displaying [subtle](https://microsoft.github.io/debug-adapter-protocol/specification#Types_StackFrame) frames
 
 ### Watch Expressions
 
@@ -149,6 +151,7 @@ List all breakpoints currently set.
 Mappings:
 
 - `open`: Jump to the location the breakpoint is set
+- `toggle`: Enable/disable the selected breakpoint
 
 ### REPL
 
